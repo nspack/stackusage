@@ -32,6 +32,7 @@
 #define SU_ENV_STDERR   "SU_STDERR"
 #define SU_ENV_SIGNO    "SU_SIGNO"
 #define SU_ENV_SYSLOG   "SU_SYSLOG"
+#define SU_ENV_HUMAN    "SU_HUMAN"
 #define SU_FILL_BYTE    0xcd
 #define SU_FILL_OFFSET  512
 #define SU_GROW_MARGIN  (256*1024)
@@ -128,6 +129,7 @@ static int su_inited = 0;
 static int su_log_signo = 0;
 static int su_log_stderr = 0;
 static int su_log_syslog = 0;
+static int su_log_human = 0;
 static char *su_log_file = NULL;
 static struct su_threadinfo_s *threadinfo_head = NULL;
 static pthread_mutex_t threadinfo_mx = PTHREAD_MUTEX_INITIALIZER;
@@ -526,6 +528,19 @@ static void su_thread_init(su_threadtype_t threadtype, pthread_attr_t *rattr,
 }
 
 
+static void su_format_size_human(size_t bytes, char *buffer, size_t buflen)
+{
+  if (bytes < 1024) {
+    snprintf(buffer, buflen, "%zu B", bytes);
+  } else if (bytes < 1024 * 1024) {
+    snprintf(buffer, buflen, "%.1f KB", bytes / 1024.0);
+  } else if (bytes < 1024 * 1024 * 1024) {
+    snprintf(buffer, buflen, "%.1f MB", bytes / (1024.0 * 1024.0));
+  } else {
+    snprintf(buffer, buflen, "%.1f GB", bytes / (1024.0 * 1024.0 * 1024.0));
+  }
+}
+
 static void su_log_stack_usage(void)
 {
   struct su_threadinfo_s *threadinfo_it = NULL;
@@ -539,8 +554,15 @@ static void su_log_stack_usage(void)
            tm.tm_year + 1900, tm.tm_mon + 1, tm.tm_mday, tm.tm_hour, tm.tm_min, tm.tm_sec);
   SU_LOG("%s log at %s ----------------------------------------\n",
          su_name, timestamp);
-  SU_LOG("  pid  id    tid  requested     actual     maxuse  max%%    dur"
-         "               funcP name\n");
+
+  if (su_log_human) {
+    SU_LOG("  pid  id    tid   requested      actual      maxuse  max%%    dur"
+           "               funcP name\n");
+  } else {
+    SU_LOG("  pid  id    tid  requested     actual     maxuse  max%%    dur"
+           "               funcP name\n");
+  }
+
   while(threadinfo_it)
   {
     int usage_percent = 0;
@@ -551,18 +573,38 @@ static void su_log_stack_usage(void)
         (int) threadinfo_it->stack_req_size;
     }
 
-    SU_LOG("%5d %3d  %5d  %9d  %9d  %9d   %3d  %5d  %18p %s\n",
-           getpid(),
-           threadinfo_it->id, 
-           threadinfo_it->tid,
-           (int) threadinfo_it->stack_req_size,
-           (int) threadinfo_it->stack_size,
-           (int) threadinfo_it->stack_max_usage,
-           (int) usage_percent,
-           threadinfo_it->time_duration,
-           threadinfo_it->func_ptr,
-           threadinfo_it->thread_name
-          );
+    if (su_log_human) {
+      char req_buf[16], actual_buf[16], max_buf[16];
+      su_format_size_human(threadinfo_it->stack_req_size, req_buf, sizeof(req_buf));
+      su_format_size_human(threadinfo_it->stack_size, actual_buf, sizeof(actual_buf));
+      su_format_size_human(threadinfo_it->stack_max_usage, max_buf, sizeof(max_buf));
+
+      SU_LOG("%5d %3d  %5d  %10s  %10s  %10s   %3d  %5d  %18p %s\n",
+             getpid(),
+             threadinfo_it->id,
+             threadinfo_it->tid,
+             req_buf,
+             actual_buf,
+             max_buf,
+             (int) usage_percent,
+             threadinfo_it->time_duration,
+             threadinfo_it->func_ptr,
+             threadinfo_it->thread_name
+            );
+    } else {
+      SU_LOG("%5d %3d  %5d  %9d  %9d  %9d   %3d  %5d  %18p %s\n",
+             getpid(),
+             threadinfo_it->id,
+             threadinfo_it->tid,
+             (int) threadinfo_it->stack_req_size,
+             (int) threadinfo_it->stack_size,
+             (int) threadinfo_it->stack_max_usage,
+             (int) usage_percent,
+             threadinfo_it->time_duration,
+             threadinfo_it->func_ptr,
+             threadinfo_it->thread_name
+            );
+    }
 
     threadinfo_it = threadinfo_it->next;
   }
@@ -676,6 +718,11 @@ static void su_get_env(void)
   if(getenv(SU_ENV_SIGNO))
   {
     su_log_signo = strtol(getenv(SU_ENV_SIGNO), NULL, 10);
+  }
+
+  if(getenv(SU_ENV_HUMAN))
+  {
+    su_log_human = strtol(getenv(SU_ENV_HUMAN), NULL, 10);
   }
 
   su_log_file = getenv(SU_ENV_FILE);
