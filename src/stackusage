@@ -14,12 +14,13 @@ showusage()
   echo "designed to work in resource-constrained environments, such as "
   echo "embedded systems."
   echo ""
-  echo "Usage: stackusage [-d] [-o PATH] [-s SIG] PROG [ARGS..]"
+  echo "Usage: stackusage [-d] [-h] [-o PATH] [-s SIG] PROG [ARGS..]"
   echo "   or: stackusage --help"
   echo "   or: stackusage --version"
   echo ""
   echo "Options:"
   echo "   -d              debug mode, running program through debugger"
+  echo "   -h              human-readable output (show sizes in KB/MB instead of bytes)"
   echo "   -o <PATH>       write output to specified file path, instead of stderr"
   echo "   -s <SIG>        enable on-demand logging when signalled SIG signal"
   echo "   PROG            program to run and analyze"
@@ -85,7 +86,8 @@ fi
 DEBUG="0"
 SIGNO=""
 OUTFILE=""
-while getopts "?do:s:" OPT; do
+HUMAN="0"
+while getopts "?dho:s:" OPT; do
   case "${OPT}" in
   \?)
     showusage
@@ -93,6 +95,9 @@ while getopts "?do:s:" OPT; do
     ;;
   d)
     DEBUG="1"
+    ;;
+  h)
+    HUMAN="1"
     ;;
   o)
     OUTFILE="${OPTARG}"
@@ -180,6 +185,7 @@ while [ "${LIBPATHS[CNT]}" != "" ]; do
     if [ "${DEBUG}" == "0" ]; then
       SU_FILE="${TMPLOG}${OUTFILE}"         \
       SU_SIGNO="${SIGNO}"                   \
+      SU_HUMAN="${HUMAN}"                   \
       LD_PRELOAD="${LIBPATH}"               \
       DYLD_INSERT_LIBRARIES="${LIBPATH}"    \
       "${@:1}"
@@ -187,6 +193,7 @@ while [ "${LIBPATHS[CNT]}" != "" ]; do
       LLDBCMDPATH="${TMP}/lldb.cmd"
       echo "env SU_FILE=\"${TMPLOG}${OUTFILE}\""        >  "${LLDBCMDPATH}"
       echo "env SU_SIGNO=\"${SIGNO}\""                  >> "${LLDBCMDPATH}"
+      echo "env SU_HUMAN=\"${HUMAN}\""                  >> "${LLDBCMDPATH}"
       echo "env LD_PRELOAD=\"${LIBPATH}\""              >> "${LLDBCMDPATH}"
       echo "env DYLD_INSERT_LIBRARIES=\"${LIBPATH}\""   >> "${LLDBCMDPATH}"
       echo "run ${@:2}"                                 >> "${LLDBCMDPATH}"
